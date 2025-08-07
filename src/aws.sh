@@ -1,21 +1,22 @@
 # TODO: only do this when AWS_ACCESS_KEY_ID is not set, otherwise grab using awscli
 : ${environment:=dev}
 
-vault_cmd=(env)
-if [[ ! $AWS_ACCESS_KEY_ID ]]; then
-  if [[ $vault_type ]]; then
-    vault_cmd=(aws-vault exec $environment-$vault_type)
+run_vault_helper() {
+  if [[ $AWS_ACCESS_KEY_ID ]]; then
+    "$@"
+  elif [[ $vault_type ]]; then
+    aws-vault exec $environment-$vault_type -- "$@"
   else
-    vault_cmd=(aws-vault exec $environment)
+    aws-vault exec $environment -- "$@"
   fi
-fi
+}
 
 run_vault() {
   if [[ $1 = -s ]]; then
     shift
-    ${vault_cmd[@]} &>/dev/null -- "$@"
+    run_vault_helper &>/dev/null "$@"
   else
-    ${vault_cmd[@]} -- "$@"
+    run_vault_helper "$@"
   fi
 }
 
