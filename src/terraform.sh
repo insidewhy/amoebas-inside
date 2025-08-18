@@ -10,21 +10,26 @@ terraform_apply_aws() {
   # This assumes the directory containing `environments` is in the directory above the script that
   # calls this function
   require_lib bparseopts.sh
-  bparseopts P=plan \
-    e:=environment s=environment=staging p=environment=production d=environment=dev -- "$@"
+  bparseopts e:=environment s=environment=staging p=environment=production d=environment=dev \
+    P=plan a=auto_approve -- "$@"
 
   if [[ $plan ]]; then
+    if [[ $auto_approve ]]; then
+      fail "Cannot use -a argument with -P"
+    fi
     vault_type=plan
   fi
   require_lib aws.sh
   require_lib date.sh
 
-  local credential_expiration="$(run_vault printenv AWS_CREDENTIAL_EXPIRATION)"
-  local key_remaining_time=$[$(iso_date_to_unix_date "$credential_expiration") - $(date +%s)]
+  if [[ ! $GITHUB_ACTIONS ]]; then
+    local credential_expiration="$(run_vault printenv AWS_CREDENTIAL_EXPIRATION)"
+    local key_remaining_time=$[$(iso_date_to_unix_date "$credential_expiration") - $(date +%s)]
 
-  # refuse to apply if the credentials will expire in less than 30 minutes
-  if (( $key_remaining_time < 1800 )); then
-    fail "credentials will expire in $key_remaining_time seconds, refusing to apply"
+    # refuse to apply if the credentials will expire in less than 30 minutes
+    if (( $key_remaining_time < 1800 )); then
+      fail "credentials will expire in $key_remaining_time seconds, refusing to apply"
+    fi
   fi
 
   subcmd=apply
@@ -33,7 +38,11 @@ terraform_apply_aws() {
   fi
 
   local environment_root="$(terraform_get_root)"
-  run_vault terraform -chdir="$environment_root" $subcmd
+  local subcmd_args=()
+  if [[ $auto_approve ]]; then
+    subcmd_args+=(-auto-approve)
+  fi
+  run_vault terraform -chdir="$environment_root" $subcmd "${subcmd_args[@]}"
 }
 
 create_terraform_state_aws() {
